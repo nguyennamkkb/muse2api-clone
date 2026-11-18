@@ -6,6 +6,10 @@ services:
     env_file:
       - path: .env
         required: false
+    # Ghi đè .env: trong container phải nghe mọi địa chỉ và dùng Chromium của image
+    environment:
+      MUSE2API_HOST: 0.0.0.0
+      MUSE2API_CHROMIUM_PATH: /usr/bin/chromium
     ports:
       - "18610:18610"
     volumes:
