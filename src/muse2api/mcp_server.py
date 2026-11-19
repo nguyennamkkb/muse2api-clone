@@ -143,7 +143,31 @@ def tool_generate_image(arguments: dict) -> dict:
     try:
         url = task["result"]["data"][0]["url"]
     except (KeyError, IndexError, TypeError):
-        url = _json(task)
+        return _text_result(_json(task), is_error=True)
+
+    scale = int(arguments.get("upscale") or 1)
+    if scale > 1:
+        try:
+            import io
+            import os
+            from PIL import Image, ImageFilter
+            out_dir = os.environ.get("MUSE_OUTPUT_DIR", "muse_output")
+            os.makedirs(out_dir, exist_ok=True)
+            with _client() as c:
+                resp = c.get(url)
+                resp.raise_for_status()
+                data = resp.content
+            im = Image.open(io.BytesIO(data))
+            new_size = (im.width * scale, im.height * scale)
+            im = im.resize(new_size, Image.LANCZOS)
+            im = im.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
+            ext = ".png" if im.mode in ("RGBA", "LA") or "transparency" in im.info else ".webp"
+            name = f"upscaled_{scale}x_{int(time.time())}{ext}"
+            path = os.path.join(out_dir, name)
+            im.save(path, dpi=(300, 300))
+            return _text_result(f"Image ready (upscaled {scale}x): {os.path.abspath(path)} ({new_size[0]}x{new_size[1]})")
+        except Exception as exc:
+            return _text_result(f"Image ready: {url}\n(Upscale failed: {exc})")
     return _text_result(f"Image ready: {url}")
 
 
@@ -246,6 +270,7 @@ TOOLS = [
                 "background": {"type": "string", "description": "transparent or opaque."},
                 "n": {"type": "integer", "default": 1, "description": "Number of images (1-4)."},
                 "response_format": {"type": "string", "description": "url or b64_json."},
+                "upscale": {"type": "integer", "default": 1, "description": "Upscale factor (Lanczos+sharpen), e.g. 4 -> ~1992x1992."},
             },
             "required": ["prompt"],
         },
