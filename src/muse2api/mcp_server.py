@@ -116,6 +116,8 @@ def tool_generate_image(arguments: dict) -> dict:
         "n": arguments.get("n", 1),
         "async": True,
     }
+    if arguments.get("response_format"):
+        body["response_format"] = arguments["response_format"]
     if arguments.get("image"):
         body["image"] = arguments["image"]
     if arguments.get("background"):
@@ -159,7 +161,7 @@ def tool_generate_video(arguments: dict) -> dict:
         "prompt": arguments["prompt"],
         "async": True,
     }
-    for k in ("size", "seconds", "image"):
+    for k in ("size", "seconds", "duration", "image", "input_reference"):
         if k in arguments:
             body[k] = arguments[k]
     with _client() as c:
@@ -242,6 +244,8 @@ TOOLS = [
                 "model": {"type": "string", "default": "muse-image"},
                 "image": {"type": "array", "items": {"type": "string"}, "description": "Reference image URLs or data URLs."},
                 "background": {"type": "string", "description": "transparent or opaque."},
+                "n": {"type": "integer", "default": 1, "description": "Number of images (1-4)."},
+                "response_format": {"type": "string", "description": "url or b64_json."},
             },
             "required": ["prompt"],
         },
@@ -267,7 +271,9 @@ TOOLS = [
                 "model": {"type": "string", "default": "muse-video"},
                 "size": {"type": "string"},
                 "seconds": {"type": "number"},
+                "duration": {"type": "number"},
                 "image": {"type": "string", "description": "Reference image URL/data URL."},
+                "input_reference": {"type": "string", "description": "OpenAI-style input reference."},
             },
             "required": ["prompt"],
         },
