@@ -109,9 +109,20 @@ def tool_chat(arguments: dict) -> dict:
 
 
 def tool_generate_image(arguments: dict) -> dict:
+    transparent = arguments.get("background") == "transparent"
+    prompt = arguments["prompt"]
+    # For transparent cut-outs, generate on a chromakey background instead of
+    # relying on muse.ai's (low-res) matting, so we can upscale before cutting.
+    if transparent:
+        prompt = (prompt.rstrip(". ") + ". Single subject, centered, fully visible, "
+                  "at least 10% empty margin on every side. BACKGROUND: one solid, flat, "
+                  "uniform pure green (#00FF00) filling the entire background. No shadow, "
+                  "no floor, no gradient, no texture, no vignette. No rim light, no glow, "
+                  "no outline or reflection in green; the subject contains no green. "
+                  "Crisp clean edges.")
     body = {
         "model": arguments.get("model", "muse-image"),
-        "prompt": arguments["prompt"],
+        "prompt": prompt,
         "size": arguments.get("size", "1:1"),
         "n": arguments.get("n", 1),
         "async": True,
@@ -120,7 +131,8 @@ def tool_generate_image(arguments: dict) -> dict:
         body["response_format"] = arguments["response_format"]
     if arguments.get("image"):
         body["image"] = arguments["image"]
-    if arguments.get("background"):
+    # Don't ask muse.ai to matte; we do it ourselves after upscaling.
+    if not transparent and arguments.get("background"):
         body["background"] = arguments["background"]
     with _client() as c:
         r = c.post("/v1/images/generations", json=body)
@@ -145,30 +157,56 @@ def tool_generate_image(arguments: dict) -> dict:
     except (KeyError, IndexError, TypeError):
         return _text_result(_json(task), is_error=True)
 
-    scale = int(arguments.get("upscale") or 1)
+    scale = int(arguments.get("upscale") or 4)
+    if scale < 1:
+        scale = 1
+    out_dir = os.environ.get("MUSE_OUTPUT_DIR", "muse_output")
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Download the generated image.
+    try:
+        with _client() as c:
+            resp = c.get(url)
+            resp.raise_for_status()
+            data = resp.content
+    except Exception as exc:
+        return _text_result(f"Image ready: {url}\n(Download failed: {exc})")
+
+    import io
+    from PIL import Image, ImageFilter
+    im = Image.open(io.BytesIO(data))
     if scale > 1:
+        im = im.resize((im.width * scale, im.height * scale), Image.LANCZOS)
+        im = im.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
+
+    ts = int(time.time())
+    if transparent:
+        # Save raw upscaled image, then remove background via remove_bg.py.
+        raw_path = os.path.join(out_dir, f"raw_{ts}.png")
+        im.save(raw_path, dpi=(300, 300))
+        script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "scripts", "remove_bg.py")
+        if not os.path.isfile(script):
+            script = os.path.join(os.getcwd(), "scripts", "remove_bg.py")
+        out_path = os.path.join(out_dir, f"cutout_{ts}.png")
         try:
-            import io
-            import os
-            from PIL import Image, ImageFilter
-            out_dir = os.environ.get("MUSE_OUTPUT_DIR", "muse_output")
-            os.makedirs(out_dir, exist_ok=True)
-            with _client() as c:
-                resp = c.get(url)
-                resp.raise_for_status()
-                data = resp.content
-            im = Image.open(io.BytesIO(data))
-            new_size = (im.width * scale, im.height * scale)
-            im = im.resize(new_size, Image.LANCZOS)
-            im = im.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
-            ext = ".png" if im.mode in ("RGBA", "LA") or "transparency" in im.info else ".webp"
-            name = f"upscaled_{scale}x_{int(time.time())}{ext}"
-            path = os.path.join(out_dir, name)
-            im.save(path, dpi=(300, 300))
-            return _text_result(f"Image ready (upscaled {scale}x): {os.path.abspath(path)} ({new_size[0]}x{new_size[1]})")
+            import subprocess, sys
+            proc = subprocess.run([sys.executable, script, raw_path, "-o", out_path],
+                                  capture_output=True, text=True, timeout=300)
+            if proc.returncode != 0:
+                return _text_result(f"Image ready: {url}\n(Upscale ok; remove_bg failed: {proc.stderr or proc.stdout})")
+            # clean up raw
+            try:
+                os.remove(raw_path)
+            except OSError:
+                pass
+            return _text_result(f"Image ready (upscaled {scale}x, bg removed): {os.path.abspath(out_path)} ({im.width}x{im.height})")
         except Exception as exc:
-            return _text_result(f"Image ready: {url}\n(Upscale failed: {exc})")
-    return _text_result(f"Image ready: {url}")
+            return _text_result(f"Image saved: {os.path.abspath(raw_path)}\n(remove_bg failed: {exc})")
+    else:
+        ext = ".png" if im.mode in ("RGBA", "LA") else ".webp"
+        path = os.path.join(out_dir, f"upscaled_{scale}x_{ts}{ext}")
+        im.save(path, dpi=(300, 300))
+        return _text_result(f"Image ready (upscaled {scale}x): {os.path.abspath(path)} ({im.width}x{im.height})")
 
 
 def tool_get_image_task(arguments: dict) -> dict:
@@ -270,7 +308,7 @@ TOOLS = [
                 "background": {"type": "string", "description": "transparent or opaque."},
                 "n": {"type": "integer", "default": 1, "description": "Number of images (1-4)."},
                 "response_format": {"type": "string", "description": "url or b64_json."},
-                "upscale": {"type": "integer", "default": 1, "description": "Upscale factor (Lanczos+sharpen), e.g. 4 -> ~1992x1992."},
+                "upscale": {"type": "integer", "default": 4, "description": "Upscale factor (Lanczos+sharpen). Default 4."},
             },
             "required": ["prompt"],
         },
