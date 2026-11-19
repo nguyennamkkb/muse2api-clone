@@ -158,20 +158,38 @@ def image_size(data: bytes) -> tuple[int, int] | None:
     return None
 
 
-def save(url: str, ratio: str) -> Path:
+def save(url: str, ratio: str, scale: int = 1) -> Path:
     data = _request("GET", url, timeout=120)
     ext = Path(url.split("?")[0]).suffix or ".webp"
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     name = f"{time.strftime('%Y%m%d_%H%M%S')}_{ratio.replace(':', 'x')}{ext}"
     path = OUTPUT_DIR / name
     path.write_bytes(data)
+
+    # Optional upscale (Lanczos). Use --upscale N (e.g. 4 -> ~1992x1992 from 498).
+    if scale and scale > 1:
+        try:
+            from PIL import Image
+            import io
+            im = Image.open(io.BytesIO(data))
+            new_size = (im.width * scale, im.height * scale)
+            im = im.resize(new_size, Image.LANCZOS)
+            # Slight sharpen to recover perceived detail after upscaling.
+            from PIL import ImageFilter
+            im = im.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
+            im.save(path, dpi=(300, 300))
+            data = path.read_bytes()
+            print(f"  Upscaled {scale}x -> {new_size[0]}x{new_size[1]}")
+        except Exception as e:
+            print(f"  Upscale failed: {e}")
+
     size = image_size(data)
     print(f"Đã lưu: {path.resolve()}" + (f"  ({size[0]}x{size[1]})" if size else ""))
     return path
 
 
 # ---------------------------------------------------------------- main flow
-def generate(ratio: str, prompt: str, refs: list[str]) -> Path:
+def generate(ratio: str, prompt: str, refs: list[str], scale: int = 1) -> Path:
     body = {"model": MODEL, "prompt": prompt, "size": ratio, "n": 1, "async": True}
     if refs:
         body["image"] = [ref_to_payload(r) for r in refs]
@@ -191,7 +209,7 @@ def generate(ratio: str, prompt: str, refs: list[str]) -> Path:
     if task.get("status") != "succeeded":
         raise SystemExit(f"Tạo ảnh thất bại: {task.get('error') or task.get('status')}")
     print(f"Hoàn tất sau {time.time() - started:.1f}s")
-    return save(task["result"]["data"][0]["url"], ratio)
+    return save(task["result"]["data"][0]["url"], ratio, scale)
 
 
 def main() -> None:
@@ -202,6 +220,8 @@ def main() -> None:
     parser.add_argument("--prompt", help="Mô tả ảnh")
     parser.add_argument("--ref", action="append", default=None,
                         help="Ảnh tham chiếu (file hoặc URL), lặp lại tối đa 4 lần")
+    parser.add_argument("--upscale", type=int, default=1,
+                        help="Hệ số phóng to ảnh (Lanczos), ví dụ 4 -> ~1992x1992")
     args = parser.parse_args()
     _apply_overrides(args.base_url, args.api_key)
 
@@ -213,7 +233,7 @@ def main() -> None:
     refs = args.ref if args.ref is not None else ([] if args.prompt else ask_refs())
     if len(refs) > MAX_REFS:
         raise SystemExit(f"Tối đa {MAX_REFS} ảnh tham chiếu.")
-    generate(ratio, prompt, refs)
+    generate(ratio, prompt, refs, args.upscale)
 
 
 if __name__ == "__main__":
