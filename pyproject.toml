@@ -38,6 +38,7 @@ dev = [
 
 [project.scripts]
 muse2api = "muse2api.__main__:main"
+muse2api-mcp = "muse2api.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/muse2api"]
