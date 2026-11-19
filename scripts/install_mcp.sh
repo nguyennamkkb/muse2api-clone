@@ -40,6 +40,9 @@ PY
 
 # Claude Desktop config
 CD="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+
+# Claude Code (CLI) config
+CC="$HOME/.claude.json"
 python3 - "$CD" "$PY" "$PROJECT" "$API_KEY" <<'PY'
 import json, sys, os
 path, py, proj, key = sys.argv[1:5]
@@ -62,4 +65,28 @@ json.dump(cfg, open(path, "w"), indent=2)
 print("Updated", path)
 PY
 
-echo "Done. Restart OpenCode and Claude Desktop to load the MCP server."
+# Claude Code (CLI) config
+python3 - "$CC" "$PY" "$PROJECT" "$API_KEY" <<'PY'
+import json, sys, os
+path, py, proj, key = sys.argv[1:5]
+try:
+    cfg = json.load(open(path))
+except FileNotFoundError:
+    cfg = {}
+cfg.setdefault("mcpServers", {})
+cfg["mcpServers"]["muse2api"] = {
+    "type": "stdio",
+    "command": py,
+    "args": ["-m", "muse2api.mcp_server"],
+    "env": {
+        "PYTHONPATH": proj + "/src",
+        "MUSE_BASE_URL": "http://127.0.0.1:18610",
+        "MUSE_API_KEY": key,
+    },
+}
+os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+json.dump(cfg, open(path, "w"), indent=2)
+print("Updated", path)
+PY
+
+echo "Done. Restart OpenCode / Claude Desktop / Claude Code to load the MCP server."

@@ -39,5 +39,30 @@ json.dump(cfg, open(path, "w"), indent=2)
 print("Updated", path)
 PYEOF
 
-echo Done. Restart Claude Desktop to load the MCP server.
+rem Claude Code (CLI) config
+set "CC=%USERPROFILE%\.claude.json"
+python - "%CC%" "%PY%" "%PROJECT%" "%API_KEY%" <<'PYEOF'
+import json, sys, os
+path, py, proj, key = sys.argv[1:5]
+try:
+    cfg = json.load(open(path))
+except FileNotFoundError:
+    cfg = {}
+cfg.setdefault("mcpServers", {})
+cfg["mcpServers"]["muse2api"] = {
+    "type": "stdio",
+    "command": py,
+    "args": ["-m", "muse2api.mcp_server"],
+    "env": {
+        "PYTHONPATH": proj + "\\src",
+        "MUSE_BASE_URL": "http://127.0.0.1:18610",
+        "MUSE_API_KEY": key,
+    },
+}
+os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+json.dump(cfg, open(path, "w"), indent=2)
+print("Updated", path)
+PYEOF
+
+echo Done. Restart Claude Desktop / Claude Code to load the MCP server.
 pause
