@@ -18,3 +18,4 @@ data/
 .vscode/
 .DS_Store
 muse_output/
+*.mp4

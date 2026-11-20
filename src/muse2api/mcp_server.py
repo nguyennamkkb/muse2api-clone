@@ -227,14 +227,14 @@ def tool_generate_video(arguments: dict) -> dict:
         if k in arguments:
             body[k] = arguments[k]
     with _client() as c:
-        r = c.post("/v1/videos/generations", json=body)
+        r = c.post("/v1/videos", json=body)
         r.raise_for_status()
         task = r.json()
     task_id = task.get("id")
     deadline = time.time() + _timeout()
     while time.time() < deadline:
         with _client() as c:
-            r = c.get(f"/v1/videos/generations/{task_id}")
+            r = c.get(f"/v1/videos/{task_id}")
             r.raise_for_status()
             task = r.json()
         status = task.get("status")
@@ -253,7 +253,7 @@ def tool_generate_video(arguments: dict) -> dict:
 def tool_get_video_task(arguments: dict) -> dict:
     task_id = arguments["task_id"]
     with _client() as c:
-        r = c.get(f"/v1/videos/generations/{task_id}")
+        r = c.get(f"/v1/videos/{task_id}")
         r.raise_for_status()
         return _text_result(_json(r.json()))
 
