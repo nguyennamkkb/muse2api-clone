@@ -823,13 +823,40 @@ class BrowserDriver(MuseDriver):
         return cands[0] if cands and score(cands[0]) > 0 else None
 
     async def _download(self, tab: _Tab, att: dict, kind: str) -> MediaResult:
-        res = await tab.session.evaluate(dom.fetch_as_base64(att["src"]), await_promise=True,
-                                         timeout=300)
+        src = att["src"]
+        width, height = att.get("w") or None, att.get("h") or None
+        preview_w, preview_h = width or 0, height or 0
+        lightbox_opened = False
+        if kind == "image" and src.startswith("blob:"):
+            # Inline chat attachments are previews (usually 498px). The original
+            # 1600px blob is loaded into the media lightbox on demand.
+            lightbox_opened = bool(await tab.session.evaluate(
+                dom.open_media_lightbox(src), timeout=10))
+            if lightbox_opened:
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    full = await tab.session.evaluate(dom.MEDIA_LIGHTBOX_IMAGE, timeout=10)
+                    if (full and full.get("src")
+                            and (full.get("w") or 0) > preview_w
+                            and (full.get("h") or 0) > preview_h):
+                        src = full["src"]
+                        width, height = full["w"], full["h"]
+                        break
+                    await asyncio.sleep(0.25)
+                else:
+                    log.warning("full-resolution image lightbox did not load; using preview")
+        try:
+            res = await tab.session.evaluate(dom.fetch_as_base64(src), await_promise=True,
+                                             timeout=300)
+        finally:
+            if lightbox_opened:
+                with contextlib.suppress(CDPError, TimeoutError):
+                    await tab.session.evaluate(dom.CLOSE_MEDIA_LIGHTBOX, timeout=5)
         if not (res or {}).get("ok"):
             raise UpstreamError(f"failed to download generated {kind}: {(res or {}).get('err')}")
         mime = res.get("mime") or ("video/mp4" if kind == "video" else "image/png")
         return MediaResult(data=base64.b64decode(res["b64"]), mime=mime, kind=kind,
-                           width=att.get("w") or None, height=att.get("h") or None)
+                           width=width, height=height)
 
     async def _generate(self, account: Account, prompt: str, images: list[InputImage],
                         kind: str, timeout: float, on_progress, cancel) -> MediaResult:

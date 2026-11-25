@@ -89,6 +89,44 @@ CHAT_STATE = f"""(() => {{
 }})()"""
 
 
+def open_media_lightbox(preview_src: str) -> str:
+    """Open the full-resolution viewer for a specific chat attachment."""
+    return f"""(() => {{
+      const src = {q(preview_src)};
+      const atts = [...document.querySelectorAll({q(ATTACHMENT)})];
+      const att = atts.find(a =>
+        [...a.querySelectorAll('img')].some(i => (i.currentSrc || i.src) === src))
+        || atts.filter(a => a.querySelector('img')).pop();
+      const btn = att && att.querySelector('button,[role=button]');
+      if (!btn) return false;
+      btn.click();
+      return true;
+    }})()"""
+
+
+# The chat attachment is a small preview. Muse loads the original-resolution
+# blob into this lightbox only after the preview is opened.
+MEDIA_LIGHTBOX_IMAGE = """(() => {
+  const d = document.querySelector('[data-hatch-media-lightbox="true"]');
+  if (!d) return null;
+  const imgs = [...d.querySelectorAll('img')]
+    .filter(i => i.naturalWidth > 0 && i.naturalHeight > 0)
+    .sort((a, b) => b.naturalWidth * b.naturalHeight - a.naturalWidth * a.naturalHeight);
+  const i = imgs[0];
+  return i ? {src: i.currentSrc || i.src || '', w: i.naturalWidth, h: i.naturalHeight} : null;
+})()"""
+
+CLOSE_MEDIA_LIGHTBOX = """(() => {
+  const d = document.querySelector('[data-hatch-media-lightbox="true"]');
+  if (!d) return false;
+  const btn = [...d.querySelectorAll('button,[role=button]')]
+    .find(b => /^(close|back to main chat)$/i.test((b.getAttribute('aria-label') || '').trim()));
+  if (!btn) return false;
+  btn.click();
+  return true;
+})()"""
+
+
 # Click "Deny" on every pending approval card; the agent then carries on without
 # the action (and the result stays private instead of becoming a public link).
 DENY_APPROVALS = f"""(() => {{

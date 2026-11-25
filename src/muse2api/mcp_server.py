@@ -157,7 +157,7 @@ def tool_generate_image(arguments: dict) -> dict:
     except (KeyError, IndexError, TypeError):
         return _text_result(_json(task), is_error=True)
 
-    scale = int(arguments.get("upscale") or 4)
+    scale = int(arguments.get("upscale") or 1)
     if scale < 1:
         scale = 1
     out_dir = os.environ.get("MUSE_OUTPUT_DIR", "muse_output")
@@ -173,11 +173,10 @@ def tool_generate_image(arguments: dict) -> dict:
         return _text_result(f"Image ready: {url}\n(Download failed: {exc})")
 
     import io
-    from PIL import Image, ImageFilter
+    from PIL import Image
     im = Image.open(io.BytesIO(data))
     if scale > 1:
         im = im.resize((im.width * scale, im.height * scale), Image.LANCZOS)
-        im = im.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
 
     ts = int(time.time())
     if transparent:
@@ -203,9 +202,8 @@ def tool_generate_image(arguments: dict) -> dict:
         except Exception as exc:
             return _text_result(f"Image saved: {os.path.abspath(raw_path)}\n(remove_bg failed: {exc})")
     else:
-        ext = ".png" if im.mode in ("RGBA", "LA") else ".webp"
-        path = os.path.join(out_dir, f"upscaled_{scale}x_{ts}{ext}")
-        im.save(path, dpi=(300, 300))
+        path = os.path.join(out_dir, f"upscaled_{scale}x_{ts}.png")
+        im.save(path, format="PNG", dpi=(300, 300))
         return _text_result(f"Image ready (upscaled {scale}x): {os.path.abspath(path)} ({im.width}x{im.height})")
 
 
@@ -308,7 +306,7 @@ TOOLS = [
                 "background": {"type": "string", "description": "transparent or opaque."},
                 "n": {"type": "integer", "default": 1, "description": "Number of images (1-4)."},
                 "response_format": {"type": "string", "description": "url or b64_json."},
-                "upscale": {"type": "integer", "default": 4, "description": "Upscale factor (Lanczos+sharpen). Default 4."},
+                "upscale": {"type": "integer", "default": 1, "description": "Upscale factor (Lanczos). Default 1 (native resolution)."},
             },
             "required": ["prompt"],
         },
