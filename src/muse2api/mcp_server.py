@@ -12,9 +12,11 @@ Configuration (environment variables):
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +58,7 @@ def _timeout() -> float:
 def _client() -> httpx.Client:
     return httpx.Client(
         base_url=_base_url(),
-        headers={"Authorization": f"Bearer {_api_key()}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {_api_key()}"},
         timeout=_timeout(),
     )
 
@@ -67,6 +69,65 @@ def _text_result(text: str, is_error: bool = False) -> dict:
 
 def _json(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=2)
+
+
+_MAX_LOCAL_IMAGE_BYTES = 20 * 1024 * 1024
+
+
+def _local_image_paths(arguments: dict) -> list[tuple[Path, str]]:
+    """Validate local reference images without reading their bytes into tool arguments."""
+    raw = arguments.get("image_paths")
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or len(raw) > 4:
+        raise ValueError("image_paths must be a list of at most 4 image files")
+
+    from PIL import Image
+
+    result: list[tuple[Path, str]] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("image_paths entries must be non-empty file paths")
+        path = Path(item).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError(f"reference image not found: {path}")
+        if path.stat().st_size > _MAX_LOCAL_IMAGE_BYTES:
+            raise ValueError(f"reference image is larger than 20MB: {path}")
+        try:
+            with Image.open(path) as im:
+                fmt = im.format
+                im.verify()
+        except Exception as exc:
+            raise ValueError(f"invalid reference image: {path}") from exc
+        mime = Image.MIME.get(fmt or "") or mimetypes.guess_type(path.name)[0]
+        if not mime or not mime.startswith("image/"):
+            raise ValueError(f"unsupported reference image type: {path}")
+        result.append((path, mime))
+    return result
+
+
+def _submit_image_task(body: dict, arguments: dict) -> dict:
+    paths = _local_image_paths(arguments)
+    if paths:
+        if arguments.get("image"):
+            raise ValueError("use either image or image_paths, not both")
+        with ExitStack() as stack:
+            files = []
+            for path, mime in paths:
+                handle = stack.enter_context(path.open("rb"))
+                files.append(("image", (path.name, handle, mime)))
+            with _client() as c:
+                r = c.post("/v1/images/edits", data=body, files=files)
+                r.raise_for_status()
+                return r.json()
+    if arguments.get("image"):
+        body["image"] = arguments["image"]
+    with _client() as c:
+        r = c.post("/v1/images/generations", json=body)
+        r.raise_for_status()
+        return r.json()
 
 
 # ---------- tool implementations ----------
@@ -129,15 +190,10 @@ def tool_generate_image(arguments: dict) -> dict:
     }
     if arguments.get("response_format"):
         body["response_format"] = arguments["response_format"]
-    if arguments.get("image"):
-        body["image"] = arguments["image"]
     # Don't ask muse.ai to matte; we do it ourselves after upscaling.
     if not transparent and arguments.get("background"):
         body["background"] = arguments["background"]
-    with _client() as c:
-        r = c.post("/v1/images/generations", json=body)
-        r.raise_for_status()
-        task = r.json()
+    task = _submit_image_task(body, arguments)
     task_id = task.get("id")
     # poll
     deadline = time.time() + _timeout()
@@ -295,14 +351,15 @@ TOOLS = [
     },
     {
         "name": "muse_generate_image",
-        "description": "Generate an image via muse.ai and return its URL. Polls until done.",
+        "description": "Generate an image via muse.ai. Accepts URL/data URL references or local image_paths. Polls until done.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "prompt": {"type": "string"},
                 "size": {"type": "string", "default": "1:1", "description": "Aspect ratio, e.g. 1:1, 16:9, 9:16."},
                 "model": {"type": "string", "default": "muse-image"},
-                "image": {"type": "array", "items": {"type": "string"}, "description": "Reference image URLs or data URLs."},
+                "image": {"type": "array", "items": {"type": "string"}, "description": "Reference image URLs or data URLs. Use image_paths for local files."},
+                "image_paths": {"type": "array", "items": {"type": "string"}, "maxItems": 4, "description": "Local reference image paths read by the MCP server; avoids putting base64 in the tool call."},
                 "background": {"type": "string", "description": "transparent or opaque."},
                 "n": {"type": "integer", "default": 1, "description": "Number of images (1-4)."},
                 "response_format": {"type": "string", "description": "url or b64_json."},
