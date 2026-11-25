@@ -22,16 +22,18 @@ try:
     cfg = json.load(open(path))
 except FileNotFoundError:
     cfg = {"$schema": "https://opencode.ai/config.json", "mcp": {}}
-cfg.setdefault("mcp", {})
-cfg["mcp"]["muse2api"] = {
+mcp = cfg.setdefault("mcp", {})
+servers = mcp.setdefault("servers", {})
+mcp.pop("muse2api", None)  # remove the legacy V1 entry if present
+servers["muse2api"] = {
     "type": "local",
     "command": [py, "-m", "muse2api.mcp_server"],
+    "cwd": ".",
     "environment": {
         "PYTHONPATH": proj + "/src",
         "MUSE_BASE_URL": "http://127.0.0.1:18610",
         "MUSE_API_KEY": key,
     },
-    "enabled": True,
 }
 os.makedirs(os.path.dirname(path), exist_ok=True)
 json.dump(cfg, open(path, "w"), indent=2)

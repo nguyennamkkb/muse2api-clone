@@ -108,6 +108,11 @@ def _local_image_paths(arguments: dict) -> list[tuple[Path, str]]:
     return result
 
 
+def _output_dir(arguments: dict) -> Path:
+    raw = arguments.get("output_dir") or os.environ.get("MUSE_OUTPUT_DIR") or "muse_output"
+    return Path(raw).expanduser().resolve()
+
+
 def _submit_image_task(body: dict, arguments: dict) -> dict:
     paths = _local_image_paths(arguments)
     if paths:
@@ -216,7 +221,7 @@ def tool_generate_image(arguments: dict) -> dict:
     scale = int(arguments.get("upscale") or 1)
     if scale < 1:
         scale = 1
-    out_dir = os.environ.get("MUSE_OUTPUT_DIR", "muse_output")
+    out_dir = _output_dir(arguments)
     os.makedirs(out_dir, exist_ok=True)
 
     # Download the generated image.
@@ -363,6 +368,7 @@ TOOLS = [
                 "background": {"type": "string", "description": "transparent or opaque."},
                 "n": {"type": "integer", "default": 1, "description": "Number of images (1-4)."},
                 "response_format": {"type": "string", "description": "url or b64_json."},
+                "output_dir": {"type": "string", "description": "Output directory. Defaults to muse_output in the current project."},
                 "upscale": {"type": "integer", "default": 1, "description": "Upscale factor (Lanczos). Default 1 (native resolution)."},
             },
             "required": ["prompt"],

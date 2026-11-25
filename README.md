@@ -62,6 +62,8 @@ scripts\install_mcp.bat
 Then restart OpenCode / Claude Desktop. Available tools:
 `muse_health`, `muse_list_models`, `muse_chat`, `muse_generate_image`, `muse_get_image_task`, `muse_generate_video`, `muse_get_video_task`.
 
+Generated images are saved to `muse_output` in the **current project** by default. Pass `output_dir` to `muse_generate_image`, or set `MUSE_OUTPUT_DIR`, to override the location.
+
 ### Reference images
 
 For local files, pass `image_paths` to `muse_generate_image` instead of putting base64 in the tool call:
