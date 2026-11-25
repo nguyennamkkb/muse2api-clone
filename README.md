@@ -48,7 +48,9 @@ cloudflared tunnel --url http://127.0.0.1:18610
 
 ## MCP (OpenCode / Claude Desktop)
 
-After the service runs, `setup` already registers MCP. To (re)install manually:
+> **Recommended:** Install MCP at the **user/global level** so it is available in every project and you do not need to register it again for each repository.
+
+After the service runs, `setup` already registers MCP globally for the current user. To (re)install manually:
 
 ```bash
 # macOS/Linux
