@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# All-in-one installer: service + MCP (OpenCode & Claude Desktop). macOS/Linux.
+# All-in-one installer: service + MCP for all supported agent CLIs. macOS/Linux.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -13,7 +13,7 @@ bash scripts/install_mcp.sh
 
 echo ""
 echo ">> Service is starting in background (PID $SVC_PID)."
-echo ">> MCP configs updated. Restart OpenCode / Claude Desktop to load."
+echo ">> MCP configs updated for installed agents. Restart or reload them to load."
 echo ">> Service URL: http://127.0.0.1:18610"
 # keep service in foreground
 wait $SVC_PID

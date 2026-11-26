@@ -19,7 +19,7 @@ cd muse2api-clone
 setup.bat
 ```
 
-`setup` creates `.venv`, installs deps, starts the service (`http://127.0.0.1:18610`), and registers MCP for OpenCode/Claude Desktop.
+`setup` creates `.venv`, installs deps, starts the service (`http://127.0.0.1:18610`), and registers MCP for every supported agent CLI found on the machine.
 
 Requirements: Python 3.10+, Google Chrome, Git.
 
@@ -46,11 +46,13 @@ cloudflared tunnel --url http://127.0.0.1:18610
 # put the printed URL into MUSE2API_PUBLIC_BASE, restart service
 ```
 
-## MCP (OpenCode / Claude Desktop)
+## MCP (Claude, OpenCode, Pi, OMP, agy, Codex)
 
 > **Recommended:** Install MCP at the **user/global level** so it is available in every project and you do not need to register it again for each repository.
 
-After the service runs, `setup` already registers MCP globally for the current user. To (re)install manually:
+The installer checks which tools are available before installing and registers `muse2api` at user level for: **Claude Code/Desktop, OpenCode, Pi, OMP, agy, and Codex**. Missing tools are skipped automatically.
+
+After the service runs, `setup` already registers MCP for the installed agents. To (re)install manually:
 
 ```bash
 # macOS/Linux
@@ -59,7 +61,7 @@ bash scripts/install_mcp.sh
 scripts\install_mcp.bat
 ```
 
-Then restart OpenCode / Claude Desktop. Available tools:
+Then restart or reload the installed agents. Available tools:
 `muse_health`, `muse_list_models`, `muse_chat`, `muse_generate_image`, `muse_get_image_task`, `muse_generate_video`, `muse_get_video_task`.
 
 Generated images are saved to `muse_output` in the **current project** by default. Pass `output_dir` to `muse_generate_image`, or set `MUSE_OUTPUT_DIR`, to override the location.
