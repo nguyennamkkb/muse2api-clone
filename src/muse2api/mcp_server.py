@@ -24,7 +24,16 @@ import httpx
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "muse2api"
-SERVER_VERSION = "0.4.0"
+SERVER_VERSION = "0.4.1"
+
+INSTRUCTIONS = (
+    "muse2api gateway for muse.ai chat, image and video.\n"
+    "For Figma design work (screens, components, tokens, QA), follow the `figma-ui-flow` skill: "
+    "inspect the file first, reuse existing components and variables, and audit the result.\n"
+    "For image assets, follow the `asset-generator` skill: Part A for scene/hero prompts, and "
+    "Part B for one cut-out subject per `muse_generate_image` call with "
+    "`background: \"transparent\"`, then check the returned PNG before using it."
+)
 
 
 def _base_url() -> str:
@@ -426,6 +435,7 @@ def _handle_request(req: dict) -> dict | None:
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+            "instructions": INSTRUCTIONS,
         }
         return {"jsonrpc": "2.0", "id": rid, "result": result}
 
